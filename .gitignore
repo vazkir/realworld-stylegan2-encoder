@@ -6,4 +6,5 @@ local_code
 .vscode
 .env
 
-
+# Stored model weights
+weights
