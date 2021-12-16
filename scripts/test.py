@@ -1,4 +1,4 @@
-import argparse
+import argparse, time
 from argparse import Namespace
 import os
 import torch
@@ -9,6 +9,60 @@ import sys
 sys.path.append(".")
 sys.path.append("..")
 
+
+def get_latent_repr(weight_path, img_path):
+    import torchvision.transforms as transforms
+    from pSpMbv3.models.psp import pSp
+
+    print(f"Loading model at path -> {weight_path}")
+
+    # update test options with options used during training
+    ckpt = torch.load(weight_path, map_location='cpu')
+    opts = ckpt['opts']
+    
+    opts['checkpoint_path'] = weight_path
+    opts['device'] = "cpu"
+
+    # opts.update(vars(test_opts))
+    if 'learn_in_w' not in opts:
+        opts['learn_in_w'] = False
+    if 'output_size' not in opts:
+        opts['output_size'] = 1024
+    opts = Namespace(**opts)
+
+    net = pSp(opts)
+    net.eval()
+    # net.cuda()
+
+    print("model ready for inference")
+
+
+    trans = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
+
+
+
+
+    # Load input image and resize to the right format
+    original_image1 = Image.open(img_path)
+    original_image1 = original_image1.convert("RGB")
+    original_image1.resize((256, 256))
+    input_image1 = original_image1
+
+    # Transformers input image into format needed for model from the pre-process pipeline
+    transformed_image1 = trans(input_image1)
+
+
+    with torch.no_grad():
+        tic = time.time()
+        result_image_pt, result_vector1 = net(transformed_image1.unsqueeze(0),
+                                              randomize_noise=False, 
+                                              return_latents=True) 
+        toc = time.time()
+        print('Inference took {:.4f} seconds.'.format(toc - tic))
+        return result_image_pt, result_vector1
 
 def test_onnx(args):
     import onnxruntime as ort
@@ -37,10 +91,10 @@ def test_onnx(args):
         ort_session = ort.InferenceSession(args.ckpt)
 
         for i, image in tqdm(enumerate(images), desc="stylegan2 generating..."):
-            if args.align:
-                im = detect_and_align_face(image)
-            else:
-                im = Image.open(image)
+            # if args.align:
+            #     im = detect_and_align_face(image)
+            # else:
+            im = Image.open(image)
 
             img = (np.array(im).transpose((2, 0, 1)) - 127.5) / 127.5
             img = np.expand_dims(img, 0).astype(np.float32)
@@ -219,31 +273,124 @@ def test_torch(args):
         from torchvision import utils
         from collections import OrderedDict
         from tools.common import trans
+        
+        print("Let's try....")
+        weight_path = './weights/psp_mobile.pt'
+        img_path = './test_images/align/01.png'
 
-        images = [x.path for x in os.scandir(args.images_path) if x.name.endswith(("png", "jpg", "jpeg"))]
+
+
+        result_image_pt, result_vector1 = get_latent_repr(weight_path, img_path)
+        print("whaaat result g")
+
+#         images = [x.path for x in os.scandir(args.images_path) if x.name.endswith(("png", "jpg", "jpeg"))]
+#         ckpt = torch.load(args.ckpt, map_location='cpu')
+#         opts = Namespace(**ckpt['opts'])
+#         opts.checkpoint_path = args.ckpt
+#         opts.device = "cpu"
+#         net = pSp(opts)
+#         net.eval()
+#         for i, image in tqdm(enumerate(images), desc="stylegan2 generating..."):
+#             if args.align:
+#                 im = detect_and_align_face(image)
+#             else:
+#                 im = Image.open(image)
+# 
+#             img = net(trans(im).unsqueeze(0))
+#             utils.save_image(
+#                 img,
+#                 os.path.join(args.save, "{}_{}_{}.png".format(
+#                     args.network,
+#                     args.platform,
+#                     image.split("/")[-1].split(".")[0])),
+#                 nrow=1,
+#                 normalize=True,
+#                 range=(-1, 1),
+#             )
+            
+    elif args.network == "pspv2":
+        from PIL import Image
+        from pSpMbv3.models.psp import pSp
+        # from psp.models import pSp
+        import torchvision.transforms as transforms
+        from torchvision import utils
+        from collections import OrderedDict
+        from tools.common import trans
+        print("Loading modellll")
+        
+        # update test options with options used during training
         ckpt = torch.load(args.ckpt, map_location='cpu')
-        opts = Namespace(**ckpt['opts'])
-        opts.checkpoint_path = args.ckpt
-        opts.device = "cpu"
+        opts = ckpt['opts']
+        # opts.update(vars(test_opts))
+        if 'learn_in_w' not in opts:
+            opts['learn_in_w'] = False
+        if 'output_size' not in opts:
+            opts['output_size'] = 1024
+        opts = Namespace(**opts)
+
         net = pSp(opts)
         net.eval()
-        for i, image in tqdm(enumerate(images), desc="stylegan2 generating..."):
-            if args.align:
-                im = detect_and_align_face(image)
-            else:
-                im = Image.open(image)
+        net.cuda()
+        
+        print("model ready for inference")
+        
+        
+        trans = transforms.Compose([
+            transforms.Resize((256, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])])
+        
+        
 
-            img = net(trans(im).unsqueeze(0))
-            utils.save_image(
-                img,
-                os.path.join(args.save, "{}_{}_{}.png".format(
-                    args.network,
-                    args.platform,
-                    image.split("/")[-1].split(".")[0])),
-                nrow=1,
-                normalize=True,
-                range=(-1, 1),
-            )
+        
+        # Load input image and resize to the right format
+        image_path1 = './test_images/align/01.png'
+        original_image1 = Image.open(image_path1)
+        original_image1 = original_image1.convert("RGB")
+        original_image1.resize((256, 256))
+        input_image1 = original_image1
+
+        # Transformers input image into format needed for model from the pre-process pipeline
+        transformed_image1 = transforms(input_image1)
+        
+        
+        
+        with torch.no_grad():
+            tic = time.time()
+            result_image_pt, result_vector1 = net(transformed_image1.to('cpu'), randomize_noise=False, return_latents=True) 
+            toc = time.time()
+            print('Inference took {:.4f} seconds.'.format(toc - tic))
+        
+
+#         
+#         
+#         
+#         images = [x.path for x in os.scandir(args.images_path) if x.name.endswith(("png", "jpg", "jpeg"))]
+#         ckpt = torch.load(args.ckpt, map_location='cpu')
+#         opts = Namespace(**ckpt['opts'])
+#         opts.checkpoint_path = args.ckpt
+#         opts.device = "cpu"
+#         print(opts)
+# 
+#         net = pSp(opts)
+#         net.eval()
+#         for i, image in tqdm(enumerate(images), desc="stylegan2 generating..."):
+#             if args.align:
+#                 im = detect_and_align_face(image)
+#             else:
+#                 im = Image.open(image)
+# 
+#             img = net(trans(im).unsqueeze(0))
+#             utils.save_image(
+#                 img,
+#                 os.path.join(args.save, "{}_{}_{}.png".format(
+#                     args.network,
+#                     args.platform,
+#                     image.split("/")[-1].split(".")[0])),
+#                 nrow=1,
+#                 normalize=True,
+#                 range=(-1, 1),
+#             )
 
     elif args.network == "e4e":
         from PIL import Image

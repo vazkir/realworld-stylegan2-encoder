@@ -6,4 +6,13 @@ local_code
 .vscode
 .env
 
+# Stored model weights
+weights
 
+
+pretrained_models
+shape_predictor_68_face_landmarks.dat
+
+*.pt
+*.onnx
+*.dat
